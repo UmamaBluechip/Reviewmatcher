@@ -1,6 +1,13 @@
 from flask import Flask, render_template, request
+from llm_search import perplexity_clone
+import os
 
-def search_and_compare(query, proxies=None):
+proxies={
+          "http": os.getenv("PROXY"),
+          "https": os.getenv("PROXY")
+          }
+
+def search_and_compare(query, proxies=proxies):
 
     search_result = perplexity_clone(query, proxies=proxies, verbose=False) 
 
