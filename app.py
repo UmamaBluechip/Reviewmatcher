@@ -1,3 +1,4 @@
+import re
 from flask import Flask, render_template, request
 from llm_search import perplexity_clone
 import os
@@ -6,6 +7,69 @@ proxies={
           "http": os.getenv("PROXY"),
           "https": os.getenv("PROXY")
           }
+
+
+def extract_products(search_result):
+    products = {}
+    current_product = None
+    current_citation = None
+    citations = re.findall(r"\[\[\d+\]\]\(.*?\)", search_result)
+
+    for match in re.finditer(r"\[\[\d+\]\]\((.*?)\)(.*?)(?=(\[\[\d+\]\]\((.*?)\))|$)", search_result, re.DOTALL):
+        citation, link, content = match.groups()
+        content = content.strip() 
+        if content:
+            if current_product is None:
+                current_product = content.split(".")[0]
+                products[current_product] = {"citations": [citation], "content": [content], "link": link}
+            else:
+                if citation is not None:
+                    current_citation = citation
+                
+                next_sentence = content.split(".")[0]
+                if next_sentence != current_product and next_sentence in products:
+                    current_product = next_sentence
+                
+                products[current_product]["citations"].append(citation)
+                products[current_product]["content"].append(content)
+                products[current_product]["link"] = link
+
+    return products
+
+
+def analyze_and_compare_info(product_info):
+    pros = []
+    cons = []
+    features = []
+    overall_sentiment = []
+
+    for content in product_info["content"]:
+        sentiment = sentiment_analysis_model(content)[0]["label"]
+        overall_sentiment.append(sentiment)
+        if sentiment == "POSITIVE":
+            pros.append(content)
+        elif sentiment == "NEGATIVE":
+            cons.append(content)
+        else:
+            features.append(content)
+    
+    positive_count = overall_sentiment.count("POSITIVE")
+    negative_count = overall_sentiment.count("NEGATIVE")
+    if positive_count > negative_count:
+        overall_sentiment = "positive"
+    elif positive_count < negative_count:
+        overall_sentiment = "negative"
+    else:
+        overall_sentiment = "neutral"
+
+    return {
+        "pros": pros,
+        "cons": cons,
+        "features": features,
+        "link": product_info["link"],
+        "overall_sentiment": overall_sentiment
+    }
+
 
 def search_and_compare(query, proxies=proxies):
 
