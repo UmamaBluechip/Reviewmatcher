@@ -4,32 +4,34 @@ from readability import Document
 from datetime import datetime
 from bs4 import BeautifulSoup
 import requests
-import openai
 import ujson
 import os
 from dotenv import load_dotenv
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
 
 load_dotenv()
 
-INFERENCE_URL = os.getenv("INFERENCE_URL")
+device = "cpu"
 
-COMPLETION_MODEL = "gpt-3.5-turbo"
+model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
+tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
+
 SOURCE_COUNT = 5
 
-def generate_search_query(text: str, model="gpt-3.5-turbo") -> str:
-    """
-    Uses OpenAI's ChatCompletions to generate a search query from a given text.
+def generate_search_query(text: str) -> str:
+  """
+  Uses the provided model to generate a search query from a given text.
 
-    ### Example:
-    For the text `What is the new Discord username system?`, a search query similar to `discord new username system` would be generated.
-    """
-    return openai.ChatCompletion.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": "Given a query, respond with the Google search query that would best help to answer the query. Don't use search operators. Respond with only the Google query and nothing else."},
-            {"role": "user", "content": text}
-        ]
-    )["choices"][0]["message"]["content"]
+  This function assumes the model can perform instruction following tasks.
+  """
+  prompt = f"Given a query, respond with the Google search query that would best help to answer the query. Don't use search operators. Respond with only the Google query and nothing else.\nQuery: {text}"
+  encoded_prompt = tokenizer(prompt, return_tensors="pt").to(device)
+  with torch.no_grad():
+      generated_ids = model.generate(encoded_prompt, max_length=64, do_sample=True)
+  decoded_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+  return decoded_text.strip()
+
 
 def get_google_search_links(query: str, source_count: int = SOURCE_COUNT, proxies: dict = None) -> list[str]:
     """
@@ -94,26 +96,20 @@ def scrape_text_from_link(link: str, proxies: dict = None) -> dict:
     source_text = soup.get_text()
     return {"url": link, "text": summarize_text(source_text[:50000])}
 
-def summarize_text(text):
-    stop_tokens = ["\n\n\n", "<assistant>:", "<user>:", "<instructions>:"]
+def summarize_text(text: str) -> str:
+  """
+  Uses the provided model to summarize a given text.
 
-    json_data = {
-        "inputs": "<instructions>: Given text, respond with the summarized text (no more than 100 words) and nothing else.<user>: " + text + "<assistant>:",
-        "parameters": {
-            "max_new_tokens": 1024,
-            "stop": stop_tokens
-        }
-    }
+  This function assumes the model can perform summarization tasks.
+  """
+  prompt = f"Given text, respond with the summarized text (no more than 100 words) and nothing else.\nText: {text}"
+  encoded_prompt = tokenizer(prompt, return_tensors="pt").to(device)
+  with torch.no_grad():
+      generated_ids = model.generate(encoded_prompt, max_length=100, do_sample=True)
+  decoded_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+  return decoded_text.strip()
 
-    response = requests.post(INFERENCE_URL + "/generate", json=json_data)
 
-    response = response.json()["generated_text"].strip()
-    
-    for token in stop_tokens:
-        if response.endswith(token):
-            response = response[: -len(token)]
-
-    return response
 
 def search(query: str, proxies: dict = None) -> tuple[list[str], list[dict]]:
     """
@@ -133,34 +129,31 @@ def search(query: str, proxies: dict = None) -> tuple[list[str], list[dict]]:
     return links, sources
 
 def perplexity_clone(query: str, proxies: dict = None, verbose=False) -> str:
-    """
-    A clone of Perplexity AI's "Search" feature. This function takes a query as input and returns Markdown formatted text containing a response to the query with cited sources.
-    """
-    formatted_time = datetime.utcnow().strftime("%A, %B %d, %Y %H:%M:%S UTC")
+  """
+  A clone of Perplexity AI's "Search" feature using the Mistral model.
 
-    if verbose:
-        print(f"Searching \"{query}\"...")
-    links, sources = search(query, proxies=proxies)
+  This function takes a query as input and returns Markdown formatted text containing
+  a response to the query with cited sources. It leverages retrieved summaries
+  for answer generation with the Mistral model.
+  """
+  formatted_time = datetime.utcnow().strftime("%A, %B %d, %Y %H:%M:%S UTC")
 
-    stop_tokens = ["\n\n\n", "<assistant>:", "<user>:", "<instructions>:"]
+  if verbose:
+      print(f"Searching \"{query}\"...")
+  links, sources = search(query, proxies=proxies)
 
-    json_data = {
-        "inputs": "<instructions>: Generate a comprehensive and informative answer for a given question solely based on the provided web Search Results (URL and Summary). You must only use information from the provided search results. Use an unbiased and journalistic tone. Use this current date and time: " + formatted_time + ". Combine search results together into a coherent answer. Do not repeat text. Cite search results using [${number}] notation, and don't link the citations. Only cite the most relevant results that answer the question accurately. If different results refer to different entities with the same name, write separate answers for each entity.<user>: " + ujson.dumps(sources) + "<user>: " + query + "<assistant>:",
-        "parameters": {
-            "max_new_tokens": 1024,
-            "stop": stop_tokens
-        }
-    }
+  instructions = f"Given a list of web search results (URL and Summary), generate a comprehensive and informative answer for a given question solely based on the provided information. Use an unbiased and journalistic tone. Use this current date and time: {formatted_time}. Combine search results together into a coherent answer. Do not repeat text. Cite search results using [${number}] notation, and don't link the citations. Only cite the most relevant results that answer the question accurately.\n"
 
-    response = requests.post(INFERENCE_URL + "/generate", json=json_data)
+  for i, source in enumerate(sources, start=1):
+      instructions += f"Summary {i}: {source['text']}\nURL {i}: {source['url']}\n"
+  instructions += f"Question: {query}"
 
-    response = response.json()["generated_text"].strip()
-    
-    for token in stop_tokens:
-        if response.endswith(token):
-            response = response[: -len(token)]
+  encoded_prompt = tokenizer(instructions, return_tensors="pt").to(device)
+  with torch.no_grad():
+      generated_ids = model.generate(encoded_prompt, max_length=1000, do_sample=True)
+  decoded_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
 
-    for i, link in enumerate(links, start=1):
-        response = response.replace(f"[{i}]", f"[[{i}]]({link})")
-        
-    return response
+  for i, link in enumerate(links, start=1):
+      decoded_text = decoded_text.replace(f"[{i}]", f"[[{i}]]({link})")
+
+  return decoded_text
