@@ -1,16 +1,13 @@
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs
+from numpy import number
 from readability import Document
 from datetime import datetime
 from bs4 import BeautifulSoup
 import requests
 import ujson
-import os
-from dotenv import load_dotenv
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
-
-load_dotenv()
 
 device = "cpu"
 
@@ -18,6 +15,7 @@ model = AutoModelForCausalLM.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2
 tokenizer = AutoTokenizer.from_pretrained("mistralai/Mistral-7B-Instruct-v0.2")
 
 SOURCE_COUNT = 5
+
 
 def generate_search_query(text: str) -> str:
   """
@@ -63,6 +61,7 @@ def get_google_search_links(query: str, source_count: int = SOURCE_COUNT, proxie
     
     return filtered_links[:source_count]
 
+
 def scrape_text_from_links(links: list, proxies: dict = None) -> list[dict]:   
     """
     Uses a `ThreadPoolExecutor` to run `scrape_text_from_links` on each link in `links` concurrently, allowing for lightning-fast scraping.
@@ -78,6 +77,7 @@ def scrape_text_from_links(links: list, proxies: dict = None) -> list[dict]:
 
     return results
     
+
 def scrape_text_from_link(link: str, proxies: dict = None) -> dict:
     """
     Uses the `requests` module to scrape the text from a given link, and then uses the `readability-lxml` module along with `BeautifulSoup4` to parse the text into a readable format.
@@ -96,6 +96,7 @@ def scrape_text_from_link(link: str, proxies: dict = None) -> dict:
     source_text = soup.get_text()
     return {"url": link, "text": summarize_text(source_text[:50000])}
 
+
 def summarize_text(text: str) -> str:
   """
   Uses the provided model to summarize a given text.
@@ -108,7 +109,6 @@ def summarize_text(text: str) -> str:
       generated_ids = model.generate(encoded_prompt, max_length=100, do_sample=True)
   decoded_text = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
   return decoded_text.strip()
-
 
 
 def search(query: str, proxies: dict = None) -> tuple[list[str], list[dict]]:
@@ -127,6 +127,7 @@ def search(query: str, proxies: dict = None) -> tuple[list[str], list[dict]]:
     sources = scrape_text_from_links(links, proxies=proxies)
 
     return links, sources
+
 
 def perplexity_clone(query: str, proxies: dict = None, verbose=False) -> str:
   """
