@@ -4,14 +4,11 @@ from llm_search import perplexity_clone
 import os
 import torch
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
+from transformers import pipeline
 
-tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
-sentiment_model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
-
-proxies={
-          "http": os.getenv("PROXY"),
-          "https": os.getenv("PROXY")
-          }
+sentiment_model = pipeline("text-classification", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english")
+#tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+#sentiment_model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
 
 
 def extract_products(search_result):
@@ -49,11 +46,12 @@ def analyze_and_compare_info(product_info):
     overall_sentiment = []
 
     for content in product_info["content"]:
-        inputs = tokenizer(content, return_tensors="pt")
-        with torch.no_grad():
-            logits = sentiment_model(**inputs).logits
-        predicted_class_id = logits.argmax().item()
-        sentiment = sentiment_model.config.id2label[predicted_class_id]
+        #inputs = tokenizer(content, return_tensors="pt")
+        #with torch.no_grad():
+            #logits = sentiment_model(**inputs).logits
+        #predicted_class_id = logits.argmax().item()
+        #sentiment = sentiment_model.config.id2label[predicted_class_id]
+        sentiment = sentiment_model(content)
         overall_sentiment.append(sentiment)
         if sentiment == "POSITIVE":
             pros.append(content)
@@ -80,9 +78,9 @@ def analyze_and_compare_info(product_info):
     }
 
 
-def search_and_compare(query, proxies=proxies):
+def search_and_compare(query):
 
-    search_result = perplexity_clone(query, proxies=proxies, verbose=False) 
+    search_result = perplexity_clone(query, verbose=False) 
 
     products = extract_products(search_result)
     comparisons = {}

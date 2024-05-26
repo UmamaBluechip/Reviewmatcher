@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Search Results</title>
+</head>
+<body>
+  <h1>Comparison Results</h1>
+  {% for product_name, comparison in results.items() %}
+    <h2>{{ product_name }}</h2>
+    <a href="{{ comparison.link }}">{{ product_name }}</a>
+    <p><b>Pros:</b></p>
+    <ul>
+      {% for pro in comparison.pros %}
+        <li>{{ pro }}</li>
+      {% endfor %}
+    </ul>
+    <p><b>Cons:</b></p>
+    <ul>
+      {% for con in comparison.cons %}
+        <li>{{ con }}</li>
+      {% endfor %}
+    </ul>
+    <p><b>Features:</b></p>
+    <ul>
+      {% for feature in comparison.features %}
+        <li>{{ feature }}</li>
+      {% endfor %}
+    </ul>
+    <p><b>Overall Sentiment:</b> {{ comparison.overall_sentiment }}</p>
+  {% endfor %}
+</body>
+</html>
