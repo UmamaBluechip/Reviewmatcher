@@ -6,10 +6,11 @@ import torch
 from transformers import DistilBertTokenizer, DistilBertForSequenceClassification
 from transformers import pipeline
 
-sentiment_model = pipeline("text-classification", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english")
-#tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
-#sentiment_model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+#sentiment_model = pipeline("text-classification", model="distilbert/distilbert-base-uncased-finetuned-sst-2-english")
+tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
+sentiment_model = DistilBertForSequenceClassification.from_pretrained("distilbert-base-uncased-finetuned-sst-2-english")
 
+app = Flask(__name__)
 
 def extract_products(search_result):
     products = {}
@@ -46,12 +47,12 @@ def analyze_and_compare_info(product_info):
     overall_sentiment = []
 
     for content in product_info["content"]:
-        #inputs = tokenizer(content, return_tensors="pt")
-        #with torch.no_grad():
-            #logits = sentiment_model(**inputs).logits
-        #predicted_class_id = logits.argmax().item()
-        #sentiment = sentiment_model.config.id2label[predicted_class_id]
-        sentiment = sentiment_model(content)
+        inputs = tokenizer(content, return_tensors="pt")
+        with torch.no_grad():
+            logits = sentiment_model(**inputs).logits
+        predicted_class_id = logits.argmax().item()
+        sentiment = sentiment_model.config.id2label[predicted_class_id]
+        #sentiment = sentiment_model(content)
         overall_sentiment.append(sentiment)
         if sentiment == "POSITIVE":
             pros.append(content)
@@ -80,7 +81,12 @@ def analyze_and_compare_info(product_info):
 
 def search_and_compare(query):
 
-    search_result = perplexity_clone(query, verbose=False) 
+    proxies={
+                "http": os.getenv("PROXY"),
+                "https": os.getenv("PROXY")
+            }
+
+    search_result = perplexity_clone(query, proxies=proxies, verbose=False) 
 
     products = extract_products(search_result)
     comparisons = {}
@@ -91,16 +97,13 @@ def search_and_compare(query):
     return comparisons  
 
 
-app = Flask(__name__)
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
         search_query = request.form["search"]
         comparison_results = search_and_compare(search_query)
         return render_template("results.html", results=comparison_results)
-    else:
-        return render_template("index.html")
+    return render_template("index.html")
 
 if __name__ == "__main__":
-    app.run(debug=True) 
+    app.run(host="0.0.0.0", port=8080, debug=True)

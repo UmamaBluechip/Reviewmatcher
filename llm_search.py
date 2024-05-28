@@ -1,13 +1,12 @@
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse, parse_qs
-from numpy import number
 from readability import Document
 from datetime import datetime
 from bs4 import BeautifulSoup
 import requests
-import ujson
-from transformers import AutoTokenizer, AutoModelForCausalLM
+#import ujson
 import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 device = "cpu"
 
@@ -145,7 +144,7 @@ def perplexity_clone(query: str, proxies: dict = None, verbose=False) -> str:
       print(f"Searching \"{query}\"...")
   links, sources = search(query, proxies=proxies)
 
-  instructions = f"Given a list of web search results (URL and Summary), generate a comprehensive and informative answer for a given question solely based on the provided information. Use an unbiased and journalistic tone. Use this current date and time: {formatted_time}. Combine search results together into a coherent answer. Do not repeat text. Cite search results using [${number}] notation, and don't link the citations. Only cite the most relevant results that answer the question accurately.\n"
+  instructions = f"Given a list of web search results (URL and Summary), generate a comprehensive and informative answer for a given question solely based on the provided information. Use an unbiased and journalistic tone. Use this current date and time: {formatted_time}. Combine search results together into a coherent answer. Do not repeat text. Cite search results using [number] notation, and don't link the citations. Only cite the most relevant results that answer the question accurately.\n"
 
   for i, source in enumerate(sources, start=1):
       instructions += f"Summary {i}: {source['text']}\nURL {i}: {source['url']}\n"
